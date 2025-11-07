@@ -2,9 +2,7 @@ import os
 import re
 import numpy as np
 import math
-
-global ANGSTROMS_PER_BOHR
-ANGSTROMS_PER_BOHR = 0.529177210544 # taken from CODATA
+from consts import ANGSTROMS_PER_BOHR
 
 def get_output_file_name(target_directory_path):
 	for file_name in os.listdir(target_directory_path):
