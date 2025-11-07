@@ -2,6 +2,7 @@ import os
 import re
 import numpy as np
 import math
+import subprocess
 from Tools.consts import ANGSTROMS_PER_BOHR
 
 def get_output_file_name(target_directory_path):
@@ -277,4 +278,39 @@ def get_Rlast_lines(output_file_name):
 		#os.remove(f"dat.{os.path.basename(output_file_name)}")
 		return optimised_dat_file_lines
 
+def get_bandstructure_eV(output_file_path, what=None):
+	if what == None:
+		raise TypeError("No bandstructure element defined.")
 
+	initial_pwd = os.getcwd()
+	os.chdir(os.path.dirname(output_file_path))
+	result = subprocess.run(["perl", "/home/njpg/bin/PlotBYK", output_file_path], capture_output=True, text=True, check=True)
+
+	stdout = result.stdout
+	stderr = result.stderr
+
+	lines = result.stderr.splitlines()
+
+	for line in lines:
+		if "min empty band value =" in line:
+			match = re.search(r"=\s*([-+]?\d*\.\d+)", line)
+			if match:
+				CBM_energy_eV = float(match.group(1))
+			else:
+				print("No match found.")
+		elif "max occupied band value =" in line:
+			match = re.search(r"=\s*([-+]?\d*\.\d+)", line)
+			if match:
+				VBM_energy_eV = float(match.group(1))
+			else:
+				print("No match found.")
+	os.chdir(initial_pwd)
+	if what == "bandgap":
+		bandgap_eV = CBM_energy_eV - VBM_energy_eV
+		return bandgap_eV
+	elif what == "VBM":
+		return VBM_energy_eV
+	elif what == "CBM":
+		return CBM_energy_eV
+	else:
+		raise ValueError("Unrecognised bandstructure element.")
