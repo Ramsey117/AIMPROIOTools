@@ -49,6 +49,15 @@ def get_final_force(file_path):
 				break
 	return final_force
 
+def get_net_charge(file_path):
+	with open(file_path, 'r') as file:
+		lines = file.readlines()
+	for line in lines:
+		if "Charged Unit cell, charge :" in line:
+			net_charge = float(line.split(":")[1])
+			return net_charge
+	return None
+
 def find_pristine_directory(pwd):
 	"""
 	Recursively searches backward in the directory structure for a directory named 'Pristine'.
