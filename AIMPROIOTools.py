@@ -2,7 +2,7 @@ import os
 import re
 import numpy as np
 import math
-from consts import ANGSTROMS_PER_BOHR
+from Tools.consts import ANGSTROMS_PER_BOHR
 
 def get_output_file_name(target_directory_path):
 	for file_name in os.listdir(target_directory_path):
