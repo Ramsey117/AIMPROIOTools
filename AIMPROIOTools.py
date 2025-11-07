@@ -57,7 +57,7 @@ def get_net_charge(file_path):
 		if "Charged Unit cell, charge :" in line:
 			net_charge = float(line.split(":")[1])
 			return net_charge
-	return None
+	return 0.0
 
 def find_pristine_directory(pwd):
 	"""
