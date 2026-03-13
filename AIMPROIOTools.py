@@ -3,13 +3,41 @@ import re
 import numpy as np
 import math
 import subprocess
+import bz2
+from pathlib import Path
 from consts import ANG_PER_BOHR, RY_PER_HA, EV_PER_HA
 
 def get_output_file_name(target_directory_path):
 	for file_name in os.listdir(target_directory_path):
-		if "AIM.sh.o" in file_name and file_name.count('.') == 2:
-			return file_name # output file name
+		if "AIM.sh.o" not in file_name:
+			continue
+		
+		if file_name.endswith(".bz2") and file_name.count('.') == 3:
+			return file_name
+		if not file_name.endswith(".bz2") and file_name.count('.') == 2:
+			return file_name
 	return None
+
+def smart_open(file_path, mode="r", **kwargs):
+	"""
+	Opens a file, automatically handling plain text or .bz2 compressed files.
+	
+	Args:
+		file_path (str or Path) : path to the file to open.
+		mode (str, optional)    : file mode, same as built-in open() ('r', 'w', 'a', etc.).
+								  Defaults to 'r'.
+		**kwargs                : additional keyword arguments passed to open() or bz2.open(
+	Returns:
+		file-like object        : opened in the requested mode.
+	"""
+	path = Path(file_path)
+	
+	if path.suffix == ".bz2":
+		if 'b' not in mode and 't' not in mode:
+			mode = mode+'t'
+		return bz2.open(path, mode, **kwargs)
+	else:
+		return open(path, mode, **kwargs)
 
 def get_final_energy(output_file_name):
 	"""
@@ -21,37 +49,39 @@ def get_final_energy(output_file_name):
 		final_energy (float)   : in atomic units
 	"""
 	final_energy = 0.0
-	with open(output_file_name, 'r') as output_file:
+	with smart_open(output_file_name, 'r') as output_file:
 		lines = output_file.readlines()
-		etot_count = 0
-		for line in reversed(lines):
-			if "etot" in line:
-				etot_count += 1
-				if etot_count == 2:
-					final_energy_match = re.search(r"[-+]?\d*\.\d+", line) # searches for optional +/- sign, then digits, then a decimal point, then more digits
-
-					if final_energy_match:
-						final_energy = float(final_energy_match.group())
-						break
-					else:
-						print("No final energy found.")
+	
+	etot_count = 0
+	for line in reversed(lines):
+		if "etot" in line:
+			etot_count += 1
+			if etot_count == 2:
+				final_energy_match = re.search(r"[-+]?\d*\.\d+", line) # searches for optional +/- sign, then digits, then a decimal point, then more digits
+	
+				if final_energy_match:
+					final_energy = float(final_energy_match.group())
+					break
+				else:
+					print("No final energy found.")
 	return final_energy
 
 def get_final_force(file_path):
-	with open(file_path, 'r') as file:
-		lines = file.readlines()
-		for line in reversed(lines):
-			if "OPT " in line:
-				parts = line.split()
-				try:
-					final_force = float(parts[-2])
-				except ValueError:
-					print(f"Error parsing force in {file_path} on line: {line}")
-				break
+	with smart_open(file_path, 'r') as output_file:
+		lines = output_file.readlines()
+	
+	for line in reversed(lines):
+		if "OPT " in line:
+			parts = line.split()
+			try:
+				final_force = float(parts[-2])
+			except ValueError:
+				print(f"Error parsing force in {file_path} on line: {line}")
+			break
 	return final_force
 
 def get_net_charge(file_path):
-	with open(file_path, 'r') as file:
+	with smart_open(file_path, 'r') as file:
 		lines = file.readlines()
 	for line in lines:
 		if "Charged Unit cell, charge :" in line:
@@ -89,7 +119,7 @@ def find_pristine_directory(pwd):
 	return None
 
 def count_atoms(file_path):
-	with open(file_path, 'r') as file_to_be_counted:
+	with smart_open(file_path, 'r') as file_to_be_counted:
 		lines = file_to_be_counted.readlines()
 	num_atoms = 0
 	positions_section_flag = False
@@ -103,7 +133,7 @@ def count_atoms(file_path):
 	return num_atoms
 
 def get_sampling(file_path):
-	with open(file_path, 'r') as f:
+	with smart_open(file_path, 'r') as f:
 		lines = f.readlines()
 	sampling = [0, 0, 0]
 	for line in lines:
@@ -128,7 +158,7 @@ def get_ecut(file_path,unit=None):
 	if unit not in ["Ha", "Ry", "eV"]:
 		raise ValueError("Error: Inappropriate unit label.")
 	
-	with open(file_path, 'r') as f:
+	with smart_open(file_path, 'r') as f:
 		lines = f.readlines()
 	ecut_Ha = 0.0
 	for line in lines:
@@ -148,7 +178,7 @@ def get_ecut(file_path,unit=None):
 """
 OLD - parses from dat-file section
 def get_initial_lat_consts(file_path):
-	with open(file_path, 'r') as f:
+	with smart_open(file_path, 'r') as f:
 		lines = f.readlines()
 	lat_consts = []
 	primitive_lat_consts = []
@@ -178,7 +208,7 @@ def get_lattice(file_path, space='real', output='constants'):
 	if output not in ['constants', 'vectors']:
 		raise ValueError("Argument 'output' must be either 'constants' or 'vectors'.")
 
-	with open(file_path, 'r') as f:
+	with smart_open(file_path, 'r') as f:
 		lines = f.readlines()
 
 	for i, line in enumerate(lines):
@@ -226,7 +256,7 @@ def parse_species(file_path):
 			return species_symbol
 		else:
 			raise ValueError("Input string format is incorrect")
-	with open(file_path, 'r') as f:
+	with smart_open(file_path, 'r') as f:
 		lines = f.readlines()
 	species_list = []
 	species_section_flag = False
@@ -262,7 +292,7 @@ def parse_atom_data(file_path,species_list):
 	Returns:
 		system (list of Atom objects): the system represented as a list of Atom objects. This includes the atom's index, species and position in the coords (int-p / atomic) it is represented in the file.
 	"""
-	with open(file_path, 'r') as f:
+	with smart_open(file_path, 'r') as f:
 		lines = f.readlines()
 	system = []
 	atoms_flag = False
@@ -304,7 +334,7 @@ def get_Rlast_lines(output_file_name):
 		if f"dat.{os.path.basename(output_file_name)}" in os.listdir():
 			os.remove(f"dat.{os.path.basename(output_file_name)}") # removes a previous usage's dat.AIM.sh.o
 		subprocess.run(["/home/njpg/bin/gres", "-Rlast", output_file_name], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-		with open(f"dat.{os.path.basename(output_file_name)}", "r") as optimised_dat_file:
+		with smart_open(f"dat.{os.path.basename(output_file_name)}", "r") as optimised_dat_file:
 			optimised_dat_file_lines = optimised_dat_file.readlines()
 		#os.remove(f"dat.{os.path.basename(output_file_name)}")
 		return optimised_dat_file_lines
