@@ -3,7 +3,7 @@ import re
 import numpy as np
 import math
 import subprocess
-from consts import ANGSTROMS_PER_BOHR
+from consts import ANG_PER_BOHR, RY_PER_HA, EV_PER_HA
 
 def get_output_file_name(target_directory_path):
 	for file_name in os.listdir(target_directory_path):
@@ -18,7 +18,7 @@ def get_final_energy(output_file_name):
 	Args:
 		output_file_name (str) : file to find the final energy in.
 	Returns:
-		final_energy (float) : in atomic units
+		final_energy (float)   : in atomic units
 	"""
 	final_energy = 0.0
 	with open(output_file_name, 'r') as output_file:
@@ -64,7 +64,7 @@ def find_pristine_directory(pwd):
 	Recursively searches backward in the directory structure for a directory named 'Pristine'.
 
 	Args:
-		pwd (str): The starting directory to begin the search.
+		pwd (str)  : The starting directory to begin the search.
 	Returns:
 		str or None: The path to the 'Pristine' directory if found, or None if not found.
 	"""
@@ -114,6 +114,37 @@ def get_sampling(file_path):
 				break
 	return sampling
 
+def get_ecut(file_path,unit=None):
+	"""
+	Retrieves the cut off energy used in the AIMPRO calculation from the AIMPRO output. Looks for a specific phrase 'Energy cutoff (Hartrees)' in this file.
+	Args:
+		file_path (str) : path to AIMPRO output file
+		unit (str)      : unit of energy that is wished to be returned (Options: 'Ha', 'Ry', 'eV')
+	Returns:
+		ecut (float)    : cut off energy in the unit specified in the input.
+	"""
+	if unit == None:
+		raise ValueError("Please specify a unit of energy ('Ha', 'Ry', 'eV')")
+	if unit not in ["Ha", "Ry", "eV"]:
+		raise ValueError("Error: Inappropriate unit label.")
+	
+	with open(file_path, 'r') as f:
+		lines = f.readlines()
+	ecut_Ha = 0.0
+	for line in lines:
+		if "Energy cutoff (Hartrees)" in line:
+			ecut_Ha = float(line.split()[0])
+			break
+	if ecut_Ha == 0.0:
+		raise ValueError(f"Ecut not found in {file_path}")
+	
+	if unit == "Ry":
+		return ecut_Ha*RY_PER_HA
+	elif unit == "eV":
+		return ecut_Ha*EV_PER_HA
+	else:
+		return ecut_Ha
+
 """
 OLD - parses from dat-file section
 def get_initial_lat_consts(file_path):
@@ -133,14 +164,14 @@ def get_initial_lat_consts(file_path):
 def get_lattice(file_path, space='real', output='constants'):
 	"""
 	Retrieves either the lattice constants or lattice vectors (real or reciprocal) from AIMPRO's output.
-
 	Args:
 		file_path (str): Path to the AIMPRO output file.
-		space (str): 'real' or 'reciprocal' to specify which lattice type to extract.
-		output (str): 'constants' to return [a, b, c]; 'vectors' to return 3x3 matrix of lattice vectors.
-
+		space (str)    : 'real' or 'reciprocal' to specify which lattice type to extract.
+		output (str)   : 'constants' to return [a, b, c]; 'vectors' to return 3x3 matrix of lattice vectors.
 	Returns:
-		list of floats or 3x3 numpy array: Lattice constants [a, b, c] or a 3x3 array of lattice vectors.
+		list of floats : Lattice constants [a, b, c]
+		OR
+		3x3 numpy array: a 3x3 array of lattice vectors.
 	"""
 	if space not in ['real', 'reciprocal']:
 		raise ValueError("Argument 'space' must be either 'real' or 'reciprocal'.")
@@ -165,18 +196,18 @@ def get_lattice(file_path, space='real', output='constants'):
 
 def atom_coords_intp2angstrom_npArray(atom_coords_intp_npArray, file_path):
 	lattice_vectors = get_lattice(file_path, space='real', output='vectors')
-	return (lattice_vectors.T @ atom_coords_intp_npArray) * ANGSTROMS_PER_BOHR
+	return (lattice_vectors.T @ atom_coords_intp_npArray) * ANG_PER_BOHR
 
 def atom_coords_angstrom2intp_npArray(atom_coords_angstrom_npArray, file_path):
 	lattice_vectors = get_lattice(file_path, space='real', output='vectors')
-	return np.linalg.inv(lattice_vectors.T) @ (atom_coords_angstrom_npArray/ANGSTROMS_PER_BOHR) # the reciprocal vectors are not used because they involve a factor of 2pi to convert to momentum space.
+	return np.linalg.inv(lattice_vectors.T) @ (atom_coords_angstrom_npArray/ANG_PER_BOHR) # the reciprocal vectors are not used because they involve a factor of 2pi to convert to momentum space.
 
 def parse_species(file_path):
 	"""
 	Searches a dat file or AIMPRO output file for the species in the system.
 	
 	Args:
-		file_path (str): path to dat/output file.
+		file_path (str)           : path to dat/output file.
 	Returns:
 		species_list (list of str): each str is the elemental symbol of the associated species.
 	"""
@@ -185,7 +216,7 @@ def parse_species(file_path):
 		Searches a species line for the elemental symbol for the species with regex.
 		
 		Args:
-			line (str): species line
+			line (str)          : species line
 		Returns:
 			species_symbol (str): elemental symbol for the species
 		"""
@@ -226,8 +257,8 @@ def parse_atom_data(file_path,species_list):
 	Parses a system's atomic positions. Uses prior knowledge of the species in the species list to assign an elemental system to each atom. BE AWARE - this assumes dat/output file is in hexagonal int-p units, should probably amend to work for both int-p and atomic units.
 	
 	Args:
-		file_path (str): path to the dat/output file being searched.
-		species_list (list of str): list of the elemental symbols of the species in the system, in the same order as they are defined in the file.
+		file_path (str)              : path to the dat/output file being searched.
+		species_list (list of str)   : list of the elemental symbols of the species in the system, in the same order as they are defined in the file.
 	Returns:
 		system (list of Atom objects): the system represented as a list of Atom objects. This includes the atom's index, species and position in the coords (int-p / atomic) it is represented in the file.
 	"""
@@ -252,7 +283,7 @@ def parse_atom_data(file_path,species_list):
 				atom.coords_intp = np.array([float(parts[-3]), float(parts[-2]), float(parts[-1])])
 				atom.coords_angstrom = atom_coords_intp2angstrom_npArray(atom.coords_intp, file_path)
 			else:
-				atom.coords_angstrom = ANGSTROMS_PER_BOHR*np.array([float(parts[-3]), float(parts[-2]), float(parts[-1])])
+				atom.coords_angstrom = ANG_PER_BOHR*np.array([float(parts[-3]), float(parts[-2]), float(parts[-1])])
 				atom.coords_intp = angstrom2intp_npArray(atom.coords_angstrom, file_path)
 			atom.species = species_list[int(parts[1])-1] # -1 is due to different counting bases
 			system.append(atom)
@@ -263,7 +294,7 @@ def get_Rlast_lines(output_file_name):
 	Runs gres -Rlast command on the specified AIMPRO output file. Opens the associated dat.AIM.sh.o.... file and returns its lines.
 	
 	Args:
-        output_file_name (str): The starting directory to begin the search.
+        output_file_name (str)                : The starting directory to begin the search.
 	Returns:
         optimised_dat_file_lines (list of str): lines of the dat.AIM.sh.o.... file.
 	"""
