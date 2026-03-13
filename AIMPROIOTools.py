@@ -113,7 +113,7 @@ def find_pristine_directory(pwd):
 		current_directory = parent_directory
 	return None
 
-def find_supercell_size_from_path(pwd):
+def find_supercell_dimensions_from_path(pwd):
 	"""
 	Searches the directory path for a supercell specification of the form '/nxm/'.
 	Args:
