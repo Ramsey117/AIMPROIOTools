@@ -92,30 +92,25 @@ def get_net_charge(file_path):
 def find_pristine_directory(pwd):
 	"""
 	Recursively searches backward in the directory structure for a directory named 'Pristine'.
-
 	Args:
-		pwd (str)  : The starting directory to begin the search.
+		pwd (str or Path) : The starting directory to begin the search.
 	Returns:
-		str or None: The path to the 'Pristine' directory if found, or None if not found.
+		Path or None: The path to the 'Pristine' directory if found, or None if not found.
 	"""
-	current_directory = os.path.abspath(pwd)
+	current_directory = Path(pwd).resolve()  # resolves symlinks, absolute path
 
 	while True:
-		# Check if "Pristine" exists in the current directory
-		pristine_path = os.path.join(current_directory, "Pristine")
-		if os.path.isdir(pristine_path):
+		pristine_path = current_directory / "Pristine"
+		if pristine_path.is_dir():
 			return pristine_path
-		
-		# Move up one level
-		parent_directory = os.path.dirname(current_directory)
-		
+
+		parent_directory = current_directory.parent
+
 		# If we have reached the root directory, stop the search
 		if current_directory == parent_directory:
 			break
-		
-		current_directory = parent_directory
 
-	# Return None if "Pristine" string was not found 
+		current_directory = parent_directory
 	return None
 
 def count_atoms(file_path):
