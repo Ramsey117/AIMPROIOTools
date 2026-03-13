@@ -113,6 +113,23 @@ def find_pristine_directory(pwd):
 		current_directory = parent_directory
 	return None
 
+def find_supercell_size_from_path(pwd):
+	"""
+	Searches the directory path for a supercell specification of the form '/nxm/'.
+	Args:
+		pwd (str or Path)       : directory path containing the supercell specification.
+	Returns:
+		tuple(int, int) or None : (n, m) supercell size if found, otherwise None.
+	"""
+	path = Path(pwd)
+
+	# search each directory component
+	for part in path.parts:
+		match = re.fullmatch(r"(\d+)x(\d+)", part)
+		if match:
+			return int(match.group(1)), int(match.group(2))
+	return None
+
 def count_atoms(file_path):
 	with smart_open(file_path, 'r') as file_to_be_counted:
 		lines = file_to_be_counted.readlines()
