@@ -5,7 +5,7 @@ import math
 import subprocess
 import bz2
 from pathlib import Path
-from consts import ANG_PER_BOHR, RY_PER_HA, EV_PER_HA
+from consts import ANG_PER_BOHR, ANG_PER_BOHR, RY_PER_HA, EV_PER_HA
 
 def get_output_file_name(target_directory_path):
 	for file_name in os.listdir(target_directory_path):
@@ -203,22 +203,35 @@ def get_initial_lat_consts(file_path):
 				break
 	return lat_consts
 """
-def get_lattice(file_path, space='real', output='constants'):
+def get_lattice(*, file_path, space, output, unit): # * indicates that all the arguments are required, no defaults are given, and the user must specify them keyword
 	"""
 	Retrieves either the lattice constants or lattice vectors (real or reciprocal) from AIMPRO's output.
 	Args:
 		file_path (str): Path to the AIMPRO output file.
 		space (str)    : 'real' or 'reciprocal' to specify which lattice type to extract.
 		output (str)   : 'constants' to return [a, b, c]; 'vectors' to return 3x3 matrix of lattice vectors.
+		unit (str)     : 'Bohr', 'Ang'.
 	Returns:
 		list of floats : Lattice constants [a, b, c]
 		OR
-		3x3 numpy array: a 3x3 array of lattice vectors.
+		3x3 numpy array: a 3x3 array of lattice vectors arranged in a vertical stack - i.e. the rows correspond to each lattice vector.
 	"""
 	if space not in ['real', 'reciprocal']:
 		raise ValueError("Argument 'space' must be either 'real' or 'reciprocal'.")
 	if output not in ['constants', 'vectors']:
 		raise ValueError("Argument 'output' must be either 'constants' or 'vectors'.")
+	if unit not in ['Bohr', 'Ang']:
+		raise ValueError("Argument 'unit' must be either 'Bohr' or 'Ang'.")
+	
+	# This dictionary avoids a complicated logical circuit for the return.
+	UNIT_FACTORS = {
+		("Bohr", "real")       : 1.0,
+		("Bohr", "reciprocal") : 1.0,
+		("Ang",  "real")       : ANG_PER_BOHR,
+		("Ang",  "reciprocal") : 1/ANG_PER_BOHR
+	}
+	conversion_factor = UNIT_FACTORS[(unit,space)]
+
 
 	with smart_open(file_path, 'r') as f:
 		lines = f.readlines()
@@ -229,10 +242,11 @@ def get_lattice(file_path, space='real', output='constants'):
 			a_vec = np.array(re.findall(r"[-+]?\d*\.\d+", lines[i+1])[index], dtype=float)
 			b_vec = np.array(re.findall(r"[-+]?\d*\.\d+", lines[i+2])[index], dtype=float)
 			c_vec = np.array(re.findall(r"[-+]?\d*\.\d+", lines[i+3])[index], dtype=float)
+			
 			if output == 'constants':
-				return [np.linalg.norm(a_vec), np.linalg.norm(b_vec), np.linalg.norm(c_vec)]
+				return [np.linalg.norm(a_vec)*conversion_factor, np.linalg.norm(b_vec)*conversion_factor, np.linalg.norm(c_vec)*conversion_factor]
 			else:  # output == 'vectors'
-				return np.vstack([a_vec, b_vec, c_vec]) 
+				return np.vstack([a_vec*conversion_factor, b_vec*conversion_factor, c_vec*conversion_factor]) 
 	
 	raise RuntimeError("Lattice information not found in file.")
 
@@ -296,7 +310,7 @@ class Atom():
 
 def parse_atom_data(file_path,species_list):
 	"""
-	Parses a system's atomic positions. Uses prior knowledge of the species in the species list to assign an elemental system to each atom. BE AWARE - this assumes dat/output file is in hexagonal int-p units, should probably amend to work for both int-p and atomic units.
+	Parses a system's atomic positions. Uses prior knowledge of the species in the species list to assign an elemental system to each atom.
 	
 	Args:
 		file_path (str)              : path to the dat/output file being searched.
@@ -309,6 +323,9 @@ def parse_atom_data(file_path,species_list):
 	system = []
 	atoms_flag = False
 	intp_flag = False
+	
+	lattice_vectors = get_lattice(input_file_path, space='real', output='vectors')
+	
 	for line in lines:
 		if "begin" in line and "{positions}" in line:
 			atoms_flag = True
@@ -323,10 +340,10 @@ def parse_atom_data(file_path,species_list):
 			atom = Atom(int(parts[0])) # argument is atom's index
 			if intp_flag:
 				atom.coords_intp = np.array([float(parts[-3]), float(parts[-2]), float(parts[-1])])
-				atom.coords_angstrom = atom_coords_intp2angstrom_npArray(atom.coords_intp, file_path)
+				atom.coords_angstrom = atom_coords_intp @ lattice_vectors
 			else:
 				atom.coords_angstrom = ANG_PER_BOHR*np.array([float(parts[-3]), float(parts[-2]), float(parts[-1])])
-				atom.coords_intp = angstrom2intp_npArray(atom.coords_angstrom, file_path)
+				atom.coords_intp = atom.coords_angstrom @ np.linalg.inv(lattice_vectors)
 			atom.species = species_list[int(parts[1])-1] # -1 is due to different counting bases
 			system.append(atom)
 	return system
