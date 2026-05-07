@@ -324,7 +324,7 @@ def parse_atom_data(file_path,species_list):
 	atoms_flag = False
 	intp_flag = False
 	
-	lattice_vectors = get_lattice(input_file_path, space='real', output='vectors')
+	lattice_vectors_Ang = get_lattice(file_path=file_path, space='real', output='vectors', unit='Ang')
 	
 	for line in lines:
 		if "begin" in line and "{positions}" in line:
@@ -340,10 +340,10 @@ def parse_atom_data(file_path,species_list):
 			atom = Atom(int(parts[0])) # argument is atom's index
 			if intp_flag:
 				atom.coords_intp = np.array([float(parts[-3]), float(parts[-2]), float(parts[-1])])
-				atom.coords_angstrom = atom_coords_intp @ lattice_vectors
+				atom.coords_angstrom = atom_coords_intp @ lattice_vectors_Ang
 			else:
 				atom.coords_angstrom = ANG_PER_BOHR*np.array([float(parts[-3]), float(parts[-2]), float(parts[-1])])
-				atom.coords_intp = atom.coords_angstrom @ np.linalg.inv(lattice_vectors)
+				atom.coords_intp = atom.coords_angstrom @ np.linalg.inv(lattice_vectors_Ang)
 			atom.species = species_list[int(parts[1])-1] # -1 is due to different counting bases
 			system.append(atom)
 	return system
