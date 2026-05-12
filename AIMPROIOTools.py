@@ -203,14 +203,15 @@ def get_initial_lat_consts(file_path):
 				break
 	return lat_consts
 """
-def get_lattice(*, file_path, space, output, unit): # * indicates that all the arguments are required, no defaults are given, and the user must specify them keyword
+def get_lattice(*, file_path, space, output, unit, which): # * indicates that all the arguments are required, no defaults are given, and the user must specify them keyword
 	"""
 	Retrieves either the lattice constants or lattice vectors (real or reciprocal) from AIMPRO's output.
 	Args:
 		file_path (str): Path to the AIMPRO output file.
-		space (str)    : 'real' or 'reciprocal' to specify which lattice type to extract.
+		space (str)    : 'real' or 'reciprocal' to specify which lattice type to extract. Reciprocal only works with initial lattice parameters.
 		output (str)   : 'constants' to return [a, b, c]; 'vectors' to return 3x3 matrix of lattice vectors.
 		unit (str)     : 'Bohr', 'Ang'.
+		which (str)    : 'initial' or 'final'
 	Returns:
 		list of floats : Lattice constants [a, b, c]
 		OR
@@ -222,6 +223,12 @@ def get_lattice(*, file_path, space, output, unit): # * indicates that all the a
 		raise ValueError("Argument 'output' must be either 'constants' or 'vectors'.")
 	if unit not in ['Bohr', 'Ang']:
 		raise ValueError("Argument 'unit' must be either 'Bohr' or 'Ang'.")
+	if which not in ['initial', 'final']:
+		raise ValueError("Argument 'which' must be either 'initial' or 'final'.")
+	if which == 'final' and space != 'real':
+		raise ValueError("Reciprocal lattice parameters are only available for which = 'initial'. This functionality may be added in the future.")
+	if file_path.endswith("dat"):
+		raise ValueError("get_lattice() does not currently work with dat files.")
 	
 	# This dictionary avoids a complicated logical circuit for the return.
 	UNIT_FACTORS = {
@@ -236,25 +243,45 @@ def get_lattice(*, file_path, space, output, unit): # * indicates that all the a
 	with smart_open(file_path, 'r') as f:
 		lines = f.readlines()
 
-	for i, line in enumerate(lines):
-		if "unit vectors : real space, reciprocal space" in line:
-			index = slice(0, 3) if space == 'real' else slice(-3, None)
-			a_vec = np.array(re.findall(r"[-+]?\d*\.\d+", lines[i+1])[index], dtype=float)
-			b_vec = np.array(re.findall(r"[-+]?\d*\.\d+", lines[i+2])[index], dtype=float)
-			c_vec = np.array(re.findall(r"[-+]?\d*\.\d+", lines[i+3])[index], dtype=float)
-			
-			if output == 'constants':
-				return [np.linalg.norm(a_vec)*conversion_factor, np.linalg.norm(b_vec)*conversion_factor, np.linalg.norm(c_vec)*conversion_factor]
-			else:  # output == 'vectors'
-				return np.vstack([a_vec*conversion_factor, b_vec*conversion_factor, c_vec*conversion_factor]) 
-	
-	raise RuntimeError("Lattice information not found in file.")
+	a_vec = None
+	b_vec = None
+	c_vec = None
+	if which == 'final':
+		for i, line in enumerate(lines): # this loop will iterate until the end of the file, meaning that these are the final, optimised lattice parameters.
+			if line.strip().startswith(f"aucl:"):
+				a_values = line.split(":", 1)[1].split()
+				a_vec = np.array(a_values[:3], dtype=float)
+				b_values = lines[i+1].split(":", 1)[1].split()
+				b_vec = np.array(b_values[:3], dtype=float)
+				c_values = lines[i+2].split(":", 1)[1].split()
+				c_vec = np.array(c_values[:3], dtype=float)
+		if a_vec is None or b_vec is None or c_vec is None:
+			print(f"No lattice optimisation in {file_path}. Using initial lattice params.")
+
+	if a_vec is None or b_vec is None or c_vec is None: # this will happen if which = 'initial' is selected or if optimised lattice params are not found.
+		for i, line in enumerate(lines):
+			if "unit vectors : real space, reciprocal space" in line:
+				index = slice(0, 3) if space == 'real' else slice(-3, None)
+				a_vec = np.array(re.findall(r"[-+]?\d*\.\d+", lines[i+1])[index], dtype=float)
+				b_vec = np.array(re.findall(r"[-+]?\d*\.\d+", lines[i+2])[index], dtype=float)
+				c_vec = np.array(re.findall(r"[-+]?\d*\.\d+", lines[i+3])[index], dtype=float)
+				break
+
+	if a_vec is None or b_vec is None or c_vec is None:
+		raise RuntimeError(f"Lattice information not found in {file_path}.")
+
+	if output == 'constants':
+		return [np.linalg.norm(a_vec)*conversion_factor, np.linalg.norm(b_vec)*conversion_factor, np.linalg.norm(c_vec)*conversion_factor]
+	else:  # output == 'vectors'
+		return np.vstack([a_vec*conversion_factor, b_vec*conversion_factor, c_vec*conversion_factor])
 
 def atom_coords_intp2angstrom_npArray(atom_coords_intp_npArray, file_path):
+	# depreciated
 	lattice_vectors = get_lattice(file_path, space='real', output='vectors')
 	return (lattice_vectors.T @ atom_coords_intp_npArray) * ANG_PER_BOHR
 
 def atom_coords_angstrom2intp_npArray(atom_coords_angstrom_npArray, file_path):
+	# depreciated
 	lattice_vectors = get_lattice(file_path, space='real', output='vectors')
 	return np.linalg.inv(lattice_vectors.T) @ (atom_coords_angstrom_npArray/ANG_PER_BOHR) # the reciprocal vectors are not used because they involve a factor of 2pi to convert to momentum space.
 
