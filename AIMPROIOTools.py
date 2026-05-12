@@ -207,11 +207,11 @@ def get_lattice(*, file_path, space, output, unit, which): # * indicates that al
 	"""
 	Retrieves either the lattice constants or lattice vectors (real or reciprocal) from AIMPRO's output.
 	Args:
-		file_path (str, Path) : Path to the AIMPRO output file.
-		space (str)           : 'real' or 'reciprocal' to specify which lattice type to extract. Reciprocal only works with initial lattice parameters.
-		output (str)          : 'constants' to return [a, b, c]; 'vectors' to return 3x3 matrix of lattice vectors.
-		unit (str)            : 'Bohr', 'Ang'.
-		which (str)           : 'initial' or 'final'
+		file_path (str or Path) : Path to the AIMPRO output file.
+		space (str)             : 'real' or 'reciprocal' to specify which lattice type to extract. Reciprocal only works with initial lattice parameters.
+		output (str)            : 'constants' to return [a, b, c]; 'vectors' to return 3x3 matrix of lattice vectors.
+		unit (str)              : 'Bohr', 'Ang'.
+		which (str)             : 'initial' or 'final'
 	Returns:
 		list of floats : Lattice constants [a, b, c]
 		OR
@@ -338,13 +338,17 @@ class Atom():
 	def add_nearest_neighbour(self, neighbour_atom):
 		self.nearest_neighbours.append(neighbour_atom)
 
-def parse_atom_data(file_path,species_list):
+	def print(self):
+		print(f"{self.index} {self.species} {self.coords_intp} {self.coords_angstrom}")
+
+def parse_atom_data(*,file_path,species_list,which):
 	"""
 	Parses a system's atomic positions. Uses prior knowledge of the species in the species list to assign an elemental system to each atom.
-	
+
 	Args:
-		file_path (str)              : path to the dat/output file being searched.
-		species_list (list of str)   : list of the elemental symbols of the species in the system, in the same order as they are defined in the file.
+		file_path (str or Path)    : path to the AIMPRO output file being searched.
+		species_list (list of str) : list of the elemental symbols of the species in the system, in the same order as they are defined in the file.
+		which (str)                : 'initial' or 'final' atom data to be parsed.
 	Returns:
 		system (list of Atom objects): the system represented as a list of Atom objects. This includes the atom's index, species and position in the coords (int-p / atomic) it is represented in the file.
 	"""
@@ -353,9 +357,50 @@ def parse_atom_data(file_path,species_list):
 	system = []
 	atoms_flag = False
 	intp_flag = False
-	
-	lattice_vectors_Ang = get_lattice(file_path=file_path, space='real', output='vectors', unit='Ang')
-	
+
+	if which not in ['initial', 'final']:
+		raise ValueError("Argument 'which' must be either 'initial' or 'final'.")
+	if isinstance(file_path, (str, Path)):
+		if Path(file_path).name == "dat":
+			raise ValueError("get_lattice() does not currently work with dat files.")
+	else:
+		raise TypeError(f"{file_path} needs to be str or Path object type.")
+
+	if which == 'final':
+		lattice_vectors_Ang = get_lattice(file_path=file_path, space='real', output='vectors', unit='Ang', which='final')
+		position_start = None
+		# Search backwards for the LAST positions block
+		for i in range(len(lines) - 1, -1, -1):
+			if "positions of atoms :" in lines[i]:
+				if lines[i].split('=')[1].strip() == 'intp':
+					intp_flag = True
+				elif lines[i].split('=')[1].strip() == 'intc':
+					raise ValueError("parse_atom_data() is not currently set-up to accept int-c coordinates yet.")
+				position_start = i + 1   # first data line
+				break
+
+		if position_start is not None:
+			for line in lines[position_start:]:
+				line = line.strip()
+				if not line: # on first blank line
+					break
+
+				parts = line.split()
+
+				atom = Atom(int(parts[0]))
+				atom.species = species_list[int(parts[1])-1] # -1 is due to different counting bases
+				if intp_flag:
+					atom.coords_intp = np.array([float(parts[-3]), float(parts[-2]), float(parts[-1])])
+					atom.coords_angstrom = atom.coords_intp @ lattice_vectors_Ang
+				else: # atomic units
+					atom.coords_angstrom = ANG_PER_BOHR*np.array([float(parts[-3]), float(parts[-2]), float(parts[-1])])
+					atom.coords_intp = atom.coords_angstrom @ np.linalg.inv(lattice_vectors_Ang)
+				system.append(atom)
+			return system
+		RuntimeError("No positions blocks found...") # unlike the lattice parameters, this *should* find the positions, even in calculations where there is no optimisation.
+
+	lattice_vectors_Ang = get_lattice(file_path=file_path, space='real', output='vectors', unit='Ang', which='initial')
+
 	for line in lines:
 		if "begin" in line and "{positions}" in line:
 			atoms_flag = True
@@ -370,13 +415,14 @@ def parse_atom_data(file_path,species_list):
 			atom = Atom(int(parts[0])) # argument is atom's index
 			if intp_flag:
 				atom.coords_intp = np.array([float(parts[-3]), float(parts[-2]), float(parts[-1])])
-				atom.coords_angstrom = atom_coords_intp @ lattice_vectors_Ang
+				atom.coords_angstrom = atom.coords_intp @ lattice_vectors_Ang
 			else:
 				atom.coords_angstrom = ANG_PER_BOHR*np.array([float(parts[-3]), float(parts[-2]), float(parts[-1])])
 				atom.coords_intp = atom.coords_angstrom @ np.linalg.inv(lattice_vectors_Ang)
 			atom.species = species_list[int(parts[1])-1] # -1 is due to different counting bases
 			system.append(atom)
 	return system
+
 
 def get_Rlast_lines(output_file_name):
 	"""
