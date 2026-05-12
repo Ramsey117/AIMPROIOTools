@@ -207,11 +207,11 @@ def get_lattice(*, file_path, space, output, unit, which): # * indicates that al
 	"""
 	Retrieves either the lattice constants or lattice vectors (real or reciprocal) from AIMPRO's output.
 	Args:
-		file_path (str): Path to the AIMPRO output file.
-		space (str)    : 'real' or 'reciprocal' to specify which lattice type to extract. Reciprocal only works with initial lattice parameters.
-		output (str)   : 'constants' to return [a, b, c]; 'vectors' to return 3x3 matrix of lattice vectors.
-		unit (str)     : 'Bohr', 'Ang'.
-		which (str)    : 'initial' or 'final'
+		file_path (str, Path) : Path to the AIMPRO output file.
+		space (str)           : 'real' or 'reciprocal' to specify which lattice type to extract. Reciprocal only works with initial lattice parameters.
+		output (str)          : 'constants' to return [a, b, c]; 'vectors' to return 3x3 matrix of lattice vectors.
+		unit (str)            : 'Bohr', 'Ang'.
+		which (str)           : 'initial' or 'final'
 	Returns:
 		list of floats : Lattice constants [a, b, c]
 		OR
@@ -227,8 +227,11 @@ def get_lattice(*, file_path, space, output, unit, which): # * indicates that al
 		raise ValueError("Argument 'which' must be either 'initial' or 'final'.")
 	if which == 'final' and space != 'real':
 		raise ValueError("Reciprocal lattice parameters are only available for which = 'initial'. This functionality may be added in the future.")
-	if file_path.endswith("dat"):
-		raise ValueError("get_lattice() does not currently work with dat files.")
+	if isinstance(file_path, (str, Path)):
+		if Path(file_path).name == "dat":
+			raise ValueError("get_lattice() does not currently work with dat files.")
+	else:
+		raise TypeError(f"{file_path} needs to be str or Path object type.")
 	
 	# This dictionary avoids a complicated logical circuit for the return.
 	UNIT_FACTORS = {
