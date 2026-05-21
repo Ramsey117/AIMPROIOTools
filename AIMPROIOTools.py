@@ -203,24 +203,24 @@ def get_initial_lat_consts(file_path):
 				break
 	return lat_consts
 """
-def get_lattice(*, file_path, space, output, unit, which): # * indicates that all the arguments are required, no defaults are given, and the user must specify them keyword
+def get_lattice(*, file_path, space, output, unit, desired_iter): # * indicates that all the arguments are required, no defaults are given, and the user must specify them keyword
 	"""
 	Retrieves either the lattice constants or lattice vectors (real or reciprocal) from AIMPRO's output.
 	Args:
-		file_path (str or Path) : Path to the AIMPRO output file.
-		space (str)             : 'real' or 'reciprocal' to specify which lattice type to extract. Reciprocal only works with initial lattice parameters.
-		output (str)            : 'constants' to return [a, b, c]; 'vectors' to return 3x3 matrix of lattice vectors.
-		unit (str)              : 'Bohr', 'Ang'.
-		which (str, or int)     : 'initial' or 'final' or integer describing the desired **lattice** optimisation iteration number. If there is no lattice optimisation in the run, the initial parameters will be obtained and the user is notified via the terminal.
+		file_path (str or Path)         : Path to the AIMPRO output file.
+		space (str)                     : 'real' or 'reciprocal' to specify which lattice type to extract. Reciprocal only works with initial lattice parameters.
+		output (str)                    : 'constants' to return [a, b, c]; 'vectors' to return 3x3 matrix of lattice vectors.
+		unit (str)                      : 'Bohr', 'Ang'.
+		desired_iter (str, or int)     : 'initial' or 'final' or integer describing the desired **lattice** optimisation iteration number. If there is no lattice optimisation in the run, the initial parameters will be obtained and the user is notified via the terminal.
 	Returns:
 		list of floats : Lattice constants [a, b, c]
 		OR
 		3x3 numpy array: a 3x3 array of lattice vectors arranged in a vertical stack - i.e. the rows correspond to each lattice vector.
 	"""
-	if which == 'initial':
-		which = 0
-	elif which == 'final':
-		which = -1
+	if desired_iter == 'initial':
+		desired_iter = 0
+	elif desired_iter == 'final':
+		desired_iter = -1
 
 	if space not in ['real', 'reciprocal']:
 		raise ValueError("Argument 'space' must be either 'real' or 'reciprocal'.")
@@ -228,10 +228,10 @@ def get_lattice(*, file_path, space, output, unit, which): # * indicates that al
 		raise ValueError("Argument 'output' must be either 'constants' or 'vectors'.")
 	if unit not in ['Bohr', 'Ang']:
 		raise ValueError("Argument 'unit' must be either 'Bohr' or 'Ang'.")
-	if not isinstance(which, int) or which < -1:
-		raise ValueError("Argument 'which' must be either 'initial' or 'final' or -1, 0, or positive integer that is the optimisation iteration.")
-	if which == -1 and space != 'real':
-		raise ValueError("Reciprocal lattice parameters are only available for which = 'initial'. This functionality may be added in the future.")
+	if not isinstance(desired_iter, int) or desired_iter < -1:
+		raise ValueError("Argument 'desired_iter' must be either 'initial' or 'final' or -1, 0, or positive integer that is the optimisation iteration.")
+	if desired_iter == -1 and space != 'real':
+		raise ValueError("Reciprocal lattice parameters are only available for desired_iter = 'initial'. This functionality may be added in the future.")
 	if isinstance(file_path, (str, Path)):
 		if Path(file_path).name == "dat":
 			raise ValueError("get_lattice() does not currently work with dat files.")
@@ -255,7 +255,7 @@ def get_lattice(*, file_path, space, output, unit, which): # * indicates that al
 	a_vec = None
 	b_vec = None
 	c_vec = None
-	if which != 0:
+	if desired_iter != 0:
 		iteration_counter = -1 # initiated as -1 because aucl is present in the initial statement of position data for lattice opt calculations.
 		for i, line in enumerate(lines): # this loop will iterate until the end of the file, meaning that these are the final, optimised lattice parameters.
 			if line.strip().startswith(f"aucl:"):
@@ -266,14 +266,14 @@ def get_lattice(*, file_path, space, output, unit, which): # * indicates that al
 				b_vec = np.array(b_values[:3], dtype=float)
 				c_values = lines[i+2].split(":", 1)[1].split()
 				c_vec = np.array(c_values[:3], dtype=float)
-				if iteration_counter == which:
+				if iteration_counter == desired_iter:
 					break
 		if a_vec is None or b_vec is None or c_vec is None: # optimised lattice parameters have not been found. Notify the user that the initials are to be used.
 			print(f"No lattice optimisation in {file_path}. Using initial lattice params.")
-		if which > iteration_counter and iteration_counter != -1: # The desired optimisation iteration index is larger than the maximum in the calculation. Raise an error because the user has likely input the wrong number. -1 is excluded to avoid this happening when there is no lattice optimisation i.e. when there is geometry optimisation but not lattice optimisation.
-			raise ValueError(f"which={which} has not been found in {file_path}. There are only {iteration_counter} lattice optimisation iterations.")
+		if desired_iter > iteration_counter and iteration_counter != -1: # The desired optimisation iteration index is larger than the maximum in the calculation. Raise an error because the user has likely input the wrong number. -1 is excluded to avoid this happening when there is no lattice optimisation i.e. when there is geometry optimisation but not lattice optimisation.
+			raise ValueError(f"desired_iter={desired_iter} has not been found in {file_path}. There are only {iteration_counter} lattice optimisation iterations.")
 
-	if a_vec is None or b_vec is None or c_vec is None: # this will happen if which = 'initial' is selected or if optimised lattice params are not found.
+	if a_vec is None or b_vec is None or c_vec is None: # this will happen if desired_iter = 'initial' is selected or if optimised lattice params are not found.
 		for i, line in enumerate(lines):
 			if "unit vectors : real space, reciprocal space" in line:
 				index = slice(0, 3) if space == 'real' else slice(-3, None)
