@@ -229,7 +229,7 @@ def get_lattice(*, file_path, space, output, unit, desired_iter): # * indicates 
 	if unit not in ['Bohr', 'Ang']:
 		raise ValueError("Argument 'unit' must be either 'Bohr' or 'Ang'.")
 	if not isinstance(desired_iter, int) or desired_iter < -1:
-		raise ValueError("Argument 'desired_iter' must be either 'initial' or 'final' or -1, 0, or positive integer that is the optimisation iteration.")
+		raise ValueError("Argument 'desired_iter' must be either 'initial' or 'final' or -1, 0, or positive integer that is the optimisation iteration index.")
 	if desired_iter == -1 and space != 'real':
 		raise ValueError("Reciprocal lattice parameters are only available for desired_iter = 'initial'. This functionality may be added in the future.")
 	if isinstance(file_path, (str, Path)):
@@ -353,14 +353,14 @@ class Atom():
 	def print(self):
 		print(f"{self.index} {self.species} {self.coords_intp} {self.coords_angstrom}")
 
-def parse_atom_data(*,file_path,species_list,which):
+def parse_atom_data(*,file_path,species_list,desired_iter):
 	"""
 	Parses a system's atomic positions. Uses prior knowledge of the species in the species list to assign an elemental system to each atom.
 
 	Args:
-		file_path (str or Path)    : path to the AIMPRO output file being searched.
-		species_list (list of str) : list of the elemental symbols of the species in the system, in the same order as they are defined in the file.
-		which (str)                : 'initial' or 'final' atom data to be parsed.
+		file_path (str or Path)      : path to the AIMPRO output file being searched.
+		species_list (list of str)   : list of the elemental symbols of the species in the system, in the same order as they are defined in the file.
+		desired_iter (str or int)    : 'initial' or 'final' or integer describing the index of the desired **geometry** optimisation iteration for which the atom positions will be parsed. Works with co-optimised lattice parameters.
 	Returns:
 		system (list of Atom objects): the system represented as a list of Atom objects. This includes the atom's index, species and position in the coords (int-p / atomic) it is represented in the file.
 	"""
@@ -370,26 +370,64 @@ def parse_atom_data(*,file_path,species_list,which):
 	atoms_flag = False
 	intp_flag = False
 
-	if which not in ['initial', 'final']:
-		raise ValueError("Argument 'which' must be either 'initial' or 'final'.")
+	# Convert initial and final to their corresponding iteration integers
+	if desired_iter == 'initial':
+		desired_iter = 0
+	elif desired_iter == 'final':
+		desired_iter = -1
+
+	# argument handling
+	if not isinstance(desired_iter, int) or desired_iter < -1:
+		raise ValueError("Argument 'desired_iter' must be either 'initial' or 'final' or -1, 0, or positive integer that is the optimisation iteration index.")
 	if isinstance(file_path, (str, Path)):
 		if Path(file_path).name == "dat":
 			raise ValueError("get_lattice() does not currently work with dat files.")
 	else:
 		raise TypeError(f"{file_path} needs to be str or Path object type.")
 
-	if which == 'final':
-		lattice_vectors_Ang = get_lattice(file_path=file_path, space='real', output='vectors', unit='Ang', which='final')
+	# Detect whether the job includes optimisation.
+	optimisation_flag = False
+	for line in lines:
+		if "optimise option chosen" in line:
+			optimisation_flag = True
+			break
+		elif "Processing Lattice ..." in line: # this is past the point where the optimisation flag will have been identified.
+			break
+
+	# Safeguard against requests for positions of specific iterations for calculation with no optimisation.
+	if not optimisation_flag and desired_iter not in [0,-1]:
+		raise ValueError(f"No optimisation in calculation. desired_iter={desired_iter} does not exist.")
+
+	lattice_vectors_Ang = get_lattice(file_path=file_path, space='real', output='vectors', unit='Ang', desired_iter=desired_iter)
+
+	# For
+	if desired_iter != 0:
 		position_start = None
-		# Search backwards for the LAST positions block
-		for i in range(len(lines) - 1, -1, -1):
-			if "positions of atoms :" in lines[i]:
+		if desired_iter == -1: # search backwards for the last positions block
+			initial_line_index     = len(lines) - 1
+			termination_line_index = -1
+			direction              = -1
+			num_pos_block_to_pass  = 0 # this is the number of atom position blocks it will see before parsing the atom data and stopping.
+		else:
+			initial_line_index     = 0
+			termination_line_index = len(lines)
+			direction              = 1
+			num_pos_block_to_pass  = desired_iter
+
+		# Search the file to find the position at which the desired atom positions block is.
+		num_pos_blocks_passed = 0
+		for i in range(initial_line_index, termination_line_index, direction):
+			if "positions of atoms :" in lines[i] and num_pos_blocks_passed < num_pos_block_to_pass:
+				num_pos_blocks_passed += 1
+			elif "positions of atoms :" in lines[i] and num_pos_blocks_passed == num_pos_block_to_pass:
 				if lines[i].split('=')[1].strip() == 'intp':
 					intp_flag = True
 				elif lines[i].split('=')[1].strip() == 'intc':
 					raise ValueError("parse_atom_data() is not currently set-up to accept int-c coordinates yet.")
 				position_start = i + 1   # first data line
 				break
+		if num_pos_blocks_passed < num_pos_block_to_pass:
+			raise ValueError(f"There are not {desired_iter} optimisation iterations in {file_path}. Only {num_pos_blocks_passed} positions blocks found.")
 
 		if position_start is not None:
 			for line in lines[position_start:]:
@@ -409,9 +447,7 @@ def parse_atom_data(*,file_path,species_list,which):
 					atom.coords_intp = atom.coords_angstrom @ np.linalg.inv(lattice_vectors_Ang)
 				system.append(atom)
 			return system
-		RuntimeError("No positions blocks found...") # unlike the lattice parameters, this *should* find the positions, even in calculations where there is no optimisation.
-
-	lattice_vectors_Ang = get_lattice(file_path=file_path, space='real', output='vectors', unit='Ang', which='initial')
+		raise RuntimeError("No positions blocks found. Are you sure this is an AIMPRO output file?") # unlike the lattice parameters, this *should* find the positions, even in calculations where there is no optimisation.
 
 	for line in lines:
 		if "begin" in line and "{positions}" in line:
