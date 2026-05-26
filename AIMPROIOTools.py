@@ -353,7 +353,7 @@ class Atom():
 	def print(self):
 		print(f"{self.index} {self.species} {self.coords_intp} {self.coords_angstrom}")
 
-def parse_atom_data(*,file_path,species_list,desired_iter):
+def parse_atom_data(*,file_path,species_list,desired_iter,repeat=[0,0,0]):
 	"""
 	Parses a system's atomic positions. Uses prior knowledge of the species in the species list to assign an elemental system to each atom.
 
@@ -361,6 +361,7 @@ def parse_atom_data(*,file_path,species_list,desired_iter):
 		file_path (str or Path)      : path to the AIMPRO output file being searched.
 		species_list (list of str)   : list of the elemental symbols of the species in the system, in the same order as they are defined in the file.
 		desired_iter (str or int)    : 'initial' or 'final' or integer describing the index of the desired **geometry** optimisation iteration for which the atom positions will be parsed. Works with co-optimised lattice parameters.
+		repeat (list of three ints)  : the number of desired repeats [na, nb, nc] corresponding to each of the real space lattice directions.
 	Returns:
 		system (list of Atom objects): the system represented as a list of Atom objects. This includes the atom's index, species and position in the coords (int-p / atomic) it is represented in the file.
 	"""
@@ -384,6 +385,9 @@ def parse_atom_data(*,file_path,species_list,desired_iter):
 			raise ValueError("get_lattice() does not currently work with dat files.")
 	else:
 		raise TypeError(f"{file_path} needs to be str or Path object type.")
+
+	if len(repeat) != 3 or not all(isinstance(x, int) for x in repeat):
+		raise ValueError("repeat needs to be a 3 item list of integers")
 
 	# Detect whether the job includes optimisation.
 	optimisation_flag = False
@@ -446,29 +450,53 @@ def parse_atom_data(*,file_path,species_list,desired_iter):
 					atom.coords_angstrom = ANG_PER_BOHR*np.array([float(parts[-3]), float(parts[-2]), float(parts[-1])])
 					atom.coords_intp = atom.coords_angstrom @ np.linalg.inv(lattice_vectors_Ang)
 				system.append(atom)
-			return system
+
+	else:
+		for line in lines:
+			if "begin" in line and "{positions}" in line:
+				atoms_flag = True
+				if "[int-p]" in line:
+					intp_flag = True
+			elif "end{positions}" in line:
+				break
+			elif atoms_flag:
+				parts = line.strip().split()
+				if len(parts) < 2 or "!" in line: # this should help ignore blank lines
+					continue
+				atom = Atom(int(parts[0])) # argument is atom's index
+				if intp_flag:
+					atom.coords_intp = np.array([float(parts[-3]), float(parts[-2]), float(parts[-1])])
+					atom.coords_angstrom = atom.coords_intp @ lattice_vectors_Ang
+				else:
+					atom.coords_angstrom = ANG_PER_BOHR*np.array([float(parts[-3]), float(parts[-2]), float(parts[-1])])
+					atom.coords_intp = atom.coords_angstrom @ np.linalg.inv(lattice_vectors_Ang)
+				atom.species = species_list[int(parts[1])-1] # -1 is due to different counting bases
+				system.append(atom)
+
+	if len(system) == 0:
 		raise RuntimeError("No positions blocks found. Are you sure this is an AIMPRO output file?") # unlike the lattice parameters, this *should* find the positions, even in calculations where there is no optimisation.
 
-	for line in lines:
-		if "begin" in line and "{positions}" in line:
-			atoms_flag = True
-			if "[int-p]" in line:
-				intp_flag = True
-		elif "end{positions}" in line:
-			break
-		elif atoms_flag:
-			parts = line.strip().split()
-			if len(parts) < 2 or "!" in line: # this should help ignore blank lines
-				continue
-			atom = Atom(int(parts[0])) # argument is atom's index
-			if intp_flag:
-				atom.coords_intp = np.array([float(parts[-3]), float(parts[-2]), float(parts[-1])])
-				atom.coords_angstrom = atom.coords_intp @ lattice_vectors_Ang
-			else:
-				atom.coords_angstrom = ANG_PER_BOHR*np.array([float(parts[-3]), float(parts[-2]), float(parts[-1])])
-				atom.coords_intp = atom.coords_angstrom @ np.linalg.inv(lattice_vectors_Ang)
-			atom.species = species_list[int(parts[1])-1] # -1 is due to different counting bases
-			system.append(atom)
+	if (repeat[0] + repeat[1] + repeat[2]) != 0:
+		primitive_system = system.copy()
+		for a in range(repeat[0] + 1):
+			for b in range(repeat[1] + 1):
+				for c in range(repeat[2] + 1):
+					if a == 0 and b == 0 and c == 0:
+						continue
+
+					print(f"a={a}, b={b}, c={c}")
+					for atom in primitive_system:
+						new_atom = Atom(len(system)+1)
+						new_atom.species = atom.species
+						new_atom.coords_angstrom = (
+							atom.coords_angstrom + a*lattice_vectors_Ang[0] + b*lattice_vectors_Ang[1] + c*lattice_vectors_Ang[2])
+						new_atom.coords_intp = atom.coords_intp.copy()
+						new_atom.coords_intp[0] += a
+						new_atom.coords_intp[1] += b
+						new_atom.coords_intp[2] += c
+
+						print(atom.index)
+						system.append(new_atom)
 	return system
 
 
