@@ -505,7 +505,6 @@ def parse_atom_data(*,file_path,species_list,desired_iter,repeats=[0,0,0]):
 						new_atom.coords_intp[1] += b
 						new_atom.coords_intp[2] += c
 
-						print(atom.index)
 						system.append(new_atom)
 	return system
 
