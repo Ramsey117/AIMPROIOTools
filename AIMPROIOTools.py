@@ -367,6 +367,56 @@ def build_rotation_matrix(*, axis, rotation_angle_rad):
 								[t*axis[0]*axis[2] - s*axis[1], t*axis[1]*axis[2] + s*axis[0], t*axis[2]*axis[2] + c        ]
 	])
 	return rotation_matrix
+
+class System:
+	def __init__(self,file_path,species_list,desired_iter,repeats=[0,0,0]):
+		self.atoms = parse_atom_data(file_path=file_path, species_list=species_list,desired_iter=desired_iter,repeats=repeats)
+		self.lattice_vectors_Ang = get_lattice(file_path=file_path, space='real', output='vectors', unit='Ang', desired_iter=desired_iter, repeats=repeats)
+
+
+	def rotate(self, *, rotation_angle, axis_of_rotation, centre_of_rotation_Ang=None, use_centre_of_atoms=False, angle_unit):
+		"""
+		Rotate the coordinates of all atoms about an axis defined a direction vector and angle which construct a rotation matrix. Coordinates can be shifted according to a centre of rotation.
+
+		Args:
+			rotation_angle         (float)                       : rotation angle in degrees or radians, depending on the angle_unit.
+			axis_of_rotation       (numpy array of three floats) : direction vector indicating the axis about which the rotation will take place. Need not be unit length.
+			centre_of_rotation_Ang (numpy array of three floats) : position vector from the coordinate origin to the point which the rotation is centred upon.
+			use_centre_of_atoms    (boolean)                     : flag indicating that the centre of rotation will instead be the average coordinate of the entire system.
+			angle_unit             (str)                         : "degrees" or "radians".
+
+		Modifies:
+			self.atoms                                           : rotates the entire set of coordinates.
+			self.lattice_vectors_Ang                             : rotates the lattice vectors accordingly.
+		"""
+		if angle_unit not in ["degrees", "radians"]:
+				raise ValueError("angle_unit needs to be 'degrees' or 'radians'.")
+
+		centre_provided = centre_of_rotation_Ang is not None
+		if centre_provided and use_centre_of_atoms:
+			raise ValueError( "Specify only one of 'centre' or 'use_centre_of_atoms=True', not both.")
+
+		if not centre_provided and not use_centre_of_atoms:
+			raise ValueError("You must specify either 'centre' or set 'use_centre_of_atoms=True'.")
+
+		if angle_unit  == "degrees":
+			rotation_angle = np.deg2rad(rotation_angle) # convert the degree angle to radians for the transformation.
+
+		if use_centre_of_atoms:
+			centre_of_rotation_Ang = np.array([0.0, 0.0, 0.0])
+			for atom in self.atoms:
+				centre_of_rotation_Ang += atom.coords_angstrom
+			centre_of_rotation_Ang = centre_of_rotation_Ang/len(self.atoms)
+
+		rotation_matrix = build_rotation_matrix(axis=axis_of_rotation, rotation_angle_rad=rotation_angle)
+
+		for atom in self.atoms:
+			atom.rotate(rotation_matrix=rotation_matrix, centre_of_rotation_Ang=centre_of_rotation_Ang)
+
+		self.lattice_vectors_Ang[0] = self.lattice_vectors_Ang[0] @ rotation_matrix.T
+		self.lattice_vectors_Ang[1] = self.lattice_vectors_Ang[1] @ rotation_matrix.T
+		self.lattice_vectors_Ang[2] = self.lattice_vectors_Ang[2] @ rotation_matrix.T
+
 class Atom:
 	def __init__(self,input_index):
 		self.index = input_index
