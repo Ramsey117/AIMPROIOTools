@@ -348,6 +348,25 @@ def parse_species(file_path):
 			species_list.append(species_symbol)
 	return species_list # ordered in the order of the species section of the output file.
 
+def build_rotation_matrix(*, axis, rotation_angle_rad):
+	"""
+	Build a rotation matrix that can perform a rotation operation on a three vector.
+
+	Args:
+		rotation_angle_rad (float)                       : rotation angle in radians.
+		axis               (numpy array of three floats) : direction vector indicating the axis about which the rotation will take place. Need not be unit length.
+
+	Returns:
+		rotation_matrix    (3x3 numpy array of floats)   : matrix M which rotates a row vector by the following operation -> v' = v @ M.T
+	"""
+	axis = axis / np.linalg.norm(axis)  # ensure unit vector
+	c, s, t = np.cos(rotation_angle_rad), np.sin(rotation_angle_rad), 1 - np.cos(rotation_angle_rad)
+	rotation_matrix = np.array([
+								[t*axis[0]*axis[0] + c,         t*axis[0]*axis[1] - s*axis[2], t*axis[0]*axis[2] + s*axis[1]],
+								[t*axis[0]*axis[1] + s*axis[2], t*axis[1]*axis[1] + c,         t*axis[1]*axis[2] - s*axis[0]],
+								[t*axis[0]*axis[2] - s*axis[1], t*axis[1]*axis[2] + s*axis[0], t*axis[2]*axis[2] + c        ]
+	])
+	return rotation_matrix
 class Atom:
 	def __init__(self,input_index):
 		self.index = input_index
