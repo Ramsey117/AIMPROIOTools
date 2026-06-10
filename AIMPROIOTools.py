@@ -348,7 +348,7 @@ def parse_species(file_path):
 			species_list.append(species_symbol)
 	return species_list # ordered in the order of the species section of the output file.
 
-class Atom():
+class Atom:
 	def __init__(self,input_index):
 		self.index = input_index
 		self.species = "init"
