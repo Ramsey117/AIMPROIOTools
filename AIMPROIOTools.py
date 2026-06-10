@@ -203,7 +203,7 @@ def get_initial_lat_consts(file_path):
 				break
 	return lat_consts
 """
-def get_lattice(*, file_path, space, output, unit, desired_iter, repeat=[0,0,0]): # * indicates that all the arguments are required, no defaults are given, and the user must specify them keyword
+def get_lattice(*, file_path, space, output, unit, desired_iter, repeats=[0,0,0]): # * indicates that all the arguments are required, no defaults are given, and the user must specify them keyword
 	"""
 	Retrieves either the lattice constants or lattice vectors (real or reciprocal) from AIMPRO's output.
 	Args:
@@ -212,7 +212,7 @@ def get_lattice(*, file_path, space, output, unit, desired_iter, repeat=[0,0,0])
 		output       (str)           : 'constants' to return [a, b, c]; 'vectors' to return 3x3 matrix of lattice vectors.
 		unit         (str)           : 'Bohr', 'Ang'.
 		desired_iter (str, or int)   : 'initial' or 'final' or integer describing the desired **lattice** optimisation iteration number. If there is no lattice optimisation in the run, the initial parameters will be obtained and the user is notified via the terminal.
-		repeat  (list of three ints) : the number of desired repeats [na, nb, nc] corresponding to each of the real space lattice directions.
+		repeats (list of three ints) : the number of desired repeats [na, nb, nc] corresponding to each of the real space lattice directions.
 	Returns:
 		list of floats : Lattice constants [a, b, c]
 		OR
@@ -288,11 +288,11 @@ def get_lattice(*, file_path, space, output, unit, desired_iter, repeat=[0,0,0])
 
 	lattice_vectors = np.vstack([a_vec*conversion_factor, b_vec*conversion_factor, c_vec*conversion_factor])
 
-	if (repeat[0] + repeat[1] + repeat[2]) != 0:
+	if (repeats[0] + repeats[1] + repeats[2]) != 0:
 		if space == 'real':
-			repeat_matrix = np.diag([repeat[0]+1, repeat[1]+1, repeat[2]+1]) # +1 is to convert between zero-based counting vs. one-based counting.
+			repeat_matrix = np.diag([repeats[0]+1, repeats[1]+1, repeats[2]+1]) # +1 is to convert between zero-based counting vs. one-based counting.
 		elif space == 'reciprocal':
-			repeat_matrix = np.diag([1/(repeat[0]+1), 1/(repeat[1]+1), 1/(repeat[2]+1)]) # +1 is to convert between zero-based counting vs. one-based counting.
+			repeat_matrix = np.diag([1/(repeats[0]+1), 1/(repeats[1]+1), 1/(repeats[2]+1)]) # +1 is to convert between zero-based counting vs. one-based counting.
 		lattice_vectors = repeat_matrix @ lattice_vectors
 
 	if output == 'constants':
@@ -363,17 +363,17 @@ class Atom():
 	def print(self):
 		print(f"{self.index} {self.species} {self.coords_intp} {self.coords_angstrom}")
 
-def parse_atom_data(*,file_path,species_list,desired_iter,repeat=[0,0,0]):
+def parse_atom_data(*,file_path,species_list,desired_iter,repeats=[0,0,0]):
 	"""
 	Parses a system's atomic positions. Uses prior knowledge of the species in the species list to assign an elemental system to each atom.
 
 	Args:
-		file_path (str or Path)      : path to the AIMPRO output file being searched.
-		species_list (list of str)   : list of the elemental symbols of the species in the system, in the same order as they are defined in the file.
-		desired_iter (str or int)    : 'initial' or 'final' or integer describing the index of the desired **geometry** optimisation iteration for which the atom positions will be parsed. Works with co-optimised lattice parameters.
-		repeat (list of three ints)  : the number of desired repeats [na, nb, nc] corresponding to each of the real space lattice directions.
+		file_path    (str or Path)          : path to the AIMPRO output file being searched.
+		species_list (list of str)          : list of the elemental symbols of the species in the system, in the same order as they are defined in the file.
+		desired_iter (str or int)           : 'initial' or 'final' or integer describing the index of the desired **geometry** optimisation iteration for which the atom positions will be parsed. Works with co-optimised lattice parameters.
+		repeats      (list of three ints)   : the number of desired repeats [na, nb, nc] corresponding to each of the real space lattice directions.
 	Returns:
-		system (list of Atom objects): the system represented as a list of Atom objects. This includes the atom's index, species and position in the coords (int-p / atomic) it is represented in the file.
+		system       (list of Atom objects) : the system represented as a list of Atom objects. This includes the atom's index, species and position in the coords (int-p / atomic) it is represented in the file.
 	"""
 	with smart_open(file_path, 'r') as f:
 		lines = f.readlines()
@@ -396,8 +396,8 @@ def parse_atom_data(*,file_path,species_list,desired_iter,repeat=[0,0,0]):
 	else:
 		raise TypeError(f"{file_path} needs to be str or Path object type.")
 
-	if len(repeat) != 3 or not all(isinstance(x, int) for x in repeat):
-		raise ValueError("repeat needs to be a 3 item list of integers")
+	if len(repeats) != 3 or not all(isinstance(x, int) for x in repeats):
+		raise ValueError("repeats needs to be a 3 item list of integers")
 
 	# Detect whether the job includes optimisation.
 	optimisation_flag = False
@@ -486,11 +486,11 @@ def parse_atom_data(*,file_path,species_list,desired_iter,repeat=[0,0,0]):
 	if len(system) == 0:
 		raise RuntimeError("No positions blocks found. Are you sure this is an AIMPRO output file?") # unlike the lattice parameters, this *should* find the positions, even in calculations where there is no optimisation.
 
-	if (repeat[0] + repeat[1] + repeat[2]) != 0:
+	if (repeats[0] + repeats[1] + repeats[2]) != 0:
 		primitive_system = system.copy()
-		for a in range(repeat[0] + 1):
-			for b in range(repeat[1] + 1):
-				for c in range(repeat[2] + 1):
+		for a in range(repeats[0] + 1):
+			for b in range(repeats[1] + 1):
+				for c in range(repeats[2] + 1):
 					if a == 0 and b == 0 and c == 0:
 						continue
 
