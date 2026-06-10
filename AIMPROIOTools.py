@@ -382,6 +382,19 @@ class Atom:
 	def print(self):
 		print(f"{self.index} {self.species} {self.coords_intp} {self.coords_angstrom}")
 
+	def rotate(self, *, rotation_matrix, centre_of_rotation_Ang):
+		"""
+		Rotate the coordinates of an object about an axis defined by a rotation matrix which is constructed of a direction vector and angle. Coordinates are shifted according to a centre of rotation.
+
+		Args:
+			rotation_matrix        (3x3 numpy array of floats)   : matrix describing the rotation about the axis by the desired angle.
+			centre_of_rotation_Ang (numpy array of three floats) : the origin for the rotation.
+
+		Modifies:
+			self.coords_angstrom                                 : rotates these coordinates.
+		"""
+		self.coords_angstrom = (self.coords_angstrom - centre_of_rotation_Ang) @ rotation_matrix.T + centre_of_rotation_Ang
+
 def parse_atom_data(*,file_path,species_list,desired_iter,repeats=[0,0,0]):
 	"""
 	Parses a system's atomic positions. Uses prior knowledge of the species in the species list to assign an elemental system to each atom.
