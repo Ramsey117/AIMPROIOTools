@@ -203,15 +203,16 @@ def get_initial_lat_consts(file_path):
 				break
 	return lat_consts
 """
-def get_lattice(*, file_path, space, output, unit, desired_iter): # * indicates that all the arguments are required, no defaults are given, and the user must specify them keyword
+def get_lattice(*, file_path, space, output, unit, desired_iter, repeat=[0,0,0]): # * indicates that all the arguments are required, no defaults are given, and the user must specify them keyword
 	"""
 	Retrieves either the lattice constants or lattice vectors (real or reciprocal) from AIMPRO's output.
 	Args:
-		file_path (str or Path)         : Path to the AIMPRO output file.
-		space (str)                     : 'real' or 'reciprocal' to specify which lattice type to extract. Reciprocal only works with initial lattice parameters.
-		output (str)                    : 'constants' to return [a, b, c]; 'vectors' to return 3x3 matrix of lattice vectors.
-		unit (str)                      : 'Bohr', 'Ang'.
-		desired_iter (str, or int)     : 'initial' or 'final' or integer describing the desired **lattice** optimisation iteration number. If there is no lattice optimisation in the run, the initial parameters will be obtained and the user is notified via the terminal.
+		file_path    (str or Path)   : Path to the AIMPRO output file.
+		space        (str)           : 'real' or 'reciprocal' to specify which lattice type to extract. Reciprocal only works with initial lattice parameters.
+		output       (str)           : 'constants' to return [a, b, c]; 'vectors' to return 3x3 matrix of lattice vectors.
+		unit         (str)           : 'Bohr', 'Ang'.
+		desired_iter (str, or int)   : 'initial' or 'final' or integer describing the desired **lattice** optimisation iteration number. If there is no lattice optimisation in the run, the initial parameters will be obtained and the user is notified via the terminal.
+		repeat  (list of three ints) : the number of desired repeats [na, nb, nc] corresponding to each of the real space lattice directions.
 	Returns:
 		list of floats : Lattice constants [a, b, c]
 		OR
@@ -285,10 +286,19 @@ def get_lattice(*, file_path, space, output, unit, desired_iter): # * indicates 
 	if a_vec is None or b_vec is None or c_vec is None: # there are no initial lattice parameters. Likely not an AIMPRO output file.
 		raise RuntimeError(f"Lattice information not found in {file_path}. Are you sure this is an AIMPRO output file?")
 
+	lattice_vectors = np.vstack([a_vec*conversion_factor, b_vec*conversion_factor, c_vec*conversion_factor])
+
+	if (repeat[0] + repeat[1] + repeat[2]) != 0:
+		if space == 'real':
+			repeat_matrix = np.diag([repeat[0]+1, repeat[1]+1, repeat[2]+1]) # +1 is to convert between zero-based counting vs. one-based counting.
+		elif space == 'reciprocal':
+			repeat_matrix = np.diag([1/(repeat[0]+1), 1/(repeat[1]+1), 1/(repeat[2]+1)]) # +1 is to convert between zero-based counting vs. one-based counting.
+		lattice_vectors = repeat_matrix @ lattice_vectors
+
 	if output == 'constants':
-		return [np.linalg.norm(a_vec)*conversion_factor, np.linalg.norm(b_vec)*conversion_factor, np.linalg.norm(c_vec)*conversion_factor]
+		return [np.linalg.norm(lattice_vectors[0]), np.linalg.norm(lattice_vectors[1]), np.linalg.norm(lattice_vectors[2])]
 	else:  # output == 'vectors'
-		return np.vstack([a_vec*conversion_factor, b_vec*conversion_factor, c_vec*conversion_factor])
+		return lattice_vectors
 
 def atom_coords_intp2angstrom_npArray(atom_coords_intp_npArray, file_path):
 	# depreciated
